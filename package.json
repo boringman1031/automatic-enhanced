@@ -1,0 +1,13 @@
+{
+  "name": "auto_try",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start-task": "node index.js"
+  },
+  "dependencies": {
+    "mammoth": "^1.6.0",
+    "puppeteer": "^22.10.0",
+    "yargs": "^17.7.2"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "task": {
+    "任務名稱": { "name": "name", "label": ["任務名稱"] },
+    "主要學科": { "name": "mainSubjectId", "label": ["主要學科"] },
+    "課綱":      { "name": "syllabus", "label": ["課綱"] },
+    "等級":      { "name": "level", "label": ["等級"] },
+    "地點":      { "name": "area", "label": ["地點"] },
+    "世紀":      { "name": "centuryId", "label": ["世紀"] },
+    "線索文本":   { "name": "description", "label": ["線索文本","線索","內容"], "rich": true },
+    "解答說明":   { "name": "answerDescription", "label": ["解答說明","說明","解答"], "rich": true },
+    "整體鷹架提示1": { "name": "missionHintSet.0.hint", "label": ["整體鷹架提示1","鷹架提示1"] },
+    "整體鷹架提示2": { "name": "missionHintSet.1.hint", "label": ["整體鷹架提示2","鷹架提示2"] },
+    "整體鷹架提示3": { "name": "missionHintSet.2.hint", "label": ["整體鷹架提示3","鷹架提示3"] }
+  },
+
+  "card": {
+    "卡片名稱":   { "name": "cardTitle",       "label": ["卡片名稱"] },
+    "文字內容":   { "name": "cardDescription", "label": ["文字內容"], "rich": true },
+    "學科":       { "name": "cardSubjectId",   "label": ["學科"] },
+    "類別":       { "name": "cardType",        "label": ["類別"] },
+    "課綱":       { "name": "cardSyllabus",    "label": ["課綱"] }
+  },
+
+  "__cardLabels": ["卡片名稱","文字內容","學科","類別","課綱"],
+
+  "dropdown": {
+    "subject": {
+      "國語":"國語","英語":"英語","數學":"數學","自然":"自然","社會":"社會",
+      "國文":"國文","英文":"英文","理化":"理化","生物":"生物","地科":"地科",
+      "歷史":"歷史","地理":"地理","公民":"公民","物理":"物理","化學":"化學",
+      "全科目":"全科目","其他":"其他"
+    },
+    "type": {
+      "人物":"人物","事件":"事件","時間":"時間","地點":"地點","物件":"物件",
+      "語文":"語文","數字":"數字","符號":"符號","概念":"概念","現象":"現象"
+    }
+  }
+}
