@@ -13,11 +13,47 @@
 
 ## 📦 安裝
 
+### 1️⃣ 安裝 Node.js（含 npm）
+
+若終端機輸入 `npm -v` 顯示錯誤，代表你尚未安裝 Node.js。
+
+在 Windows 終端機輸入以下指令打開 Node.js 官網並下載 **LTS 版本** 安裝檔：
+
+```bash
+start https://nodejs.org/
+```
+
+安裝過程請務必勾選 **「Add to PATH」**，安裝完成後重新打開終端機，輸入以下指令確認：
+
+```bash
+node -v
+npm -v
+```
+
+能看到版本號即表示安裝成功。
+
+### 2️⃣ （可選）安裝 Python + pip
+
+如果之後要使用 Python 環境，可直接在終端輸入以下指令安裝：
+
+```bash
+winget install -e --id Python.Python.3.12
+```
+
+安裝完成後確認：
+
+```bash
+python --version
+pip --version
+```
+
+### 3️⃣ 安裝專案依賴
+
+進入專案目錄後執行：
+
 ```bash
 npm install
 ```
-
----
 
 ## 📂 使用前請注意
 
@@ -31,8 +67,7 @@ npm install
    * 也可以使用其他自訂檔名（例如：`./docs/我的任務.docx`）。
 3. **⚠️ 特別注意：解答說明欄位**
 
- <img width="898" height="135" alt="image" src="https://github.com/user-attachments/assets/02ffabf0-5fcb-46c5-94ac-d3c5e2e75f25" />
-
+   <img width="915" height="145" alt="image" src="[https://github.com/user-attachments/assets/4471eb04-be3d-4feb-8030-ccb64bdf5068](https://github.com/user-attachments/assets/4471eb04-be3d-4feb-8030-ccb64bdf5068)" />
 
    * 有時候 Word 轉換過來，前面的「1、2、3」編號不會完整保留，這是 Word 檔格式問題，不會每次都發生。
    * 請在輸出結果時多看一眼，若缺少編號可手動補上。
@@ -129,7 +164,7 @@ npm run start-task -- --word ./docs/第一題.docx --loop --mode=task+card
 📄 請輸入下一個 Word 檔路徑（直接 Enter 結束）：
 ```
 
-<img width="1757" height="719" alt="image" src="https://github.com/user-attachments/assets/d40d2470-5fee-41bc-96ea-2a2794145465" />
+<img width="1900" height="829" alt="image" src="[https://github.com/user-attachments/assets/a928dce3-5fa1-41b6-a1a7-456c7a5c9b89](https://github.com/user-attachments/assets/a928dce3-5fa1-41b6-a1a7-456c7a5c9b89)" />
 
 👉 **此時你可以直接把檔案從檔案總管拖曳到終端機**，路徑會自動帶入，按 Enter 即可繼續。
 
