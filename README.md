@@ -2,6 +2,10 @@
 
 這個專案透過 Node.js 腳本（index.js）將 Word 任務檔案轉成後台建立任務／知識卡所需的欄位資料，並搭配 Puppeteer 自動化操作頁面。
 
+
+https://github.com/user-attachments/assets/774373c0-6379-4c6f-a611-f1ea11163cdb
+
+
 ---
 
 ## ⚙️ 環境需求
