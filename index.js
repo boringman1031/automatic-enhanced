@@ -10,10 +10,12 @@ import readline from "readline";
 // ---------- CLI ----------
 const argv = yargs(hideBin(process.argv))
   .option("mode", { type: "string", default: "task+card", describe: "task | card | task+card" })
-  .option("word", { type: "string", describe: "Word 檔路徑（.docx）" })
+  .option("word", { type: "string", alias: "w", describe: "Word 檔路徑（.docx）" })
   .option("loop", { type: "boolean", default: false })
   .option("close", { type: "boolean", default: false })
   .option("url", { type: "string", describe: "（可選）自動前往『建立任務』頁 URL" })
+  .option("auto-image", { type: "boolean", default: true, alias: "i", describe: "自動解析並上傳 docx 中的圖片" })
+  .option("no-image", { type: "boolean", default: false, describe: "停用自動圖片功能" })
   .help().argv;
 
 console.log("⚙️ argv =", argv);
@@ -95,6 +97,66 @@ function stripBracketNotesBlock(s) {
 
 function firstLine(text) {
   return (String(text).split("\n").find(l => l.trim().length) || "").trim();
+}
+
+// ---------- 圖片解析 ----------
+async function extractCardImages(wordPath) {
+  try {
+    console.log("📸 開始解析 docx 檔案中的圖片...");
+    
+    const images = [];
+    await mammoth.convertToHtml({
+      path: wordPath
+    }, {
+      convertImage: mammoth.images.imgElement(function(image) {
+        return image.read('base64').then(function(imageBuffer) {
+          images.push({
+            contentType: image.contentType,
+            base64Data: imageBuffer,
+            altText: image.altText || ''
+          });
+          
+          return {
+            src: `data:${image.contentType};base64,${imageBuffer.substring(0, 50)}...`
+          };
+        });
+      })
+    });
+    
+    console.log(`✅ 成功解析 ${images.length} 張圖片`);
+    return images;
+    
+  } catch (error) {
+    console.error("❌ 解析圖片時發生錯誤:", error.message);
+    return [];
+  }
+}
+
+// ---------- 圖片檔案處理 ----------
+async function saveImageToTemp(imageData, cardIndex) {
+  try {
+    // 建立暫存資料夾
+    const tempDir = path.resolve('./temp_images');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // 根據圖片類型決定副檔名
+    const ext = imageData.contentType === 'image/jpeg' ? 'jpg' : 'png';
+    const fileName = `card_${cardIndex + 1}.${ext}`;
+    const filePath = path.join(tempDir, fileName);
+    
+    // 將 base64 轉換為 buffer 並儲存
+    const buffer = Buffer.from(imageData.base64Data, 'base64');
+    fs.writeFileSync(filePath, buffer);
+    
+    console.log(`💾 圖片已儲存至: ${filePath}`);
+    return filePath;
+    
+  } catch (error) {
+    console.error(`❌ 儲存圖片失敗 (卡片 ${cardIndex + 1}):`, error.message);
+    return null;
+  }
 }
 
 // ---------- 解析 Word ----------
@@ -232,6 +294,27 @@ async function parseWord(wordPath) {
         card.syllabus = taskData.syllabus;
       }
     }
+  }
+  
+  // 解析 docx 中的圖片並與卡片關聯（預設啟用，可用 --no-image 停用）
+  const shouldExtractImages = argv['auto-image'] && !argv['no-image'];
+  
+  if (shouldExtractImages) {
+    const cardImages = await extractCardImages(wordPath);
+    if (cardImages.length > 0) {
+      console.log(`📸 從 docx 檔案中提取到 ${cardImages.length} 張圖片`);
+      
+      // 將圖片與卡片關聯（按順序對應）
+      for (let i = 0; i < Math.min(cardDataList.length, cardImages.length); i++) {
+        cardDataList[i].imageData = cardImages[i];
+        const tag = `${Math.floor(i/4) + 1}-${(i % 4) + 1}`;
+        console.log(`🖼️  卡片 ${tag} (${cardDataList[i].cardTitle || '未命名'}) 已關聯圖片`);
+      }
+    } else {
+      console.log("📷 docx 檔案中未找到圖片，將使用手動上傳模式");
+    }
+  } else {
+    console.log("📷 自動圖片功能已停用（使用 --auto-image 啟用，或移除 --no-image）");
   }
   
   return { taskData, cardDataList };
@@ -962,11 +1045,134 @@ async function typeIntoTextareaByLabelInDialog(page, labelText, value) {
   }, labelText, value);
 }
 
-async function fillUploadImageDialog(page, title, description) {
+async function setDropdownByLabelInDialog(page, labelText, value) {
+  try {
+    // 首先點擊下拉選單
+    const clickResult = await page.evaluate((label) => {
+      const dialogs = document.querySelectorAll('[role="dialog"]');
+      const dialog = dialogs[dialogs.length - 1];
+      if (!dialog) return 'NODIALOG';
+
+      const lab = Array.from(dialog.querySelectorAll('label,div,span,p,h6,h5'))
+        .find(el => (el.textContent || '').trim() === label);
+      
+      if (!lab) return 'NOLABEL';
+
+      const row = lab.closest('.MuiGrid-root, .MuiStack-root, div');
+      if (!row) return 'NOROW';
+
+      const dropdown = row.querySelector('[role="combobox"], select, .MuiSelect-root, .MuiAutocomplete-root') ||
+                      row.querySelector('div[aria-haspopup="listbox"]') ||
+                      row.querySelector('.MuiSelect-select');
+      
+      if (!dropdown) return 'NODROPDOWN';
+
+      dropdown.click();
+      return 'CLICKED';
+    }, labelText);
+
+    if (clickResult !== 'CLICKED') return clickResult;
+
+    // 等待選單出現
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    // 選擇選項
+    const selectResult = await page.evaluate((val) => {
+      const menuItems = Array.from(document.querySelectorAll('.MuiMenuItem-root, [role="option"], .MuiAutocomplete-option'));
+      
+      // 優先尋找完全匹配的選項
+      let targetItem = menuItems.find(item => {
+        const text = (item.textContent || '').trim();
+        return text === val;
+      });
+
+      // 如果沒有完全匹配，尋找包含關鍵字的選項
+      if (!targetItem) {
+        targetItem = menuItems.find(item => {
+          const text = (item.textContent || '').trim();
+          return text.includes(val);
+        });
+      }
+
+      // 如果還是沒找到，使用第一個選項
+      if (!targetItem && menuItems.length > 0) {
+        targetItem = menuItems[0];
+      }
+
+      if (targetItem) {
+        targetItem.click();
+        return 'OK:' + (targetItem.textContent || '').trim();
+      }
+
+      return 'NOITEM';
+    }, value);
+
+    return selectResult;
+
+  } catch (error) {
+    return 'ERROR:' + error.message;
+  }
+}
+
+async function fillUploadImageDialog(page, title, description, imageData = null) {
   await getTopDialog(page); // 等視窗出現
+  
+  console.log('🔍 填寫上傳圖片視窗...');
+  
+  // 填寫圖片名稱
   const r1 = await typeIntoInputByLabelInDialog(page, '圖片名稱', title || '');
+  console.log('📝 圖片名稱:', r1);
+  
+  // 填寫圖片描述
   const r2 = await typeIntoTextareaByLabelInDialog(page, '圖片描述', description || '');
-  console.log('🖼 圖片名稱:', r1, '圖片描述:', r2);
+  console.log('� 圖片描述:', r2);
+  
+  // 填寫類型（設為"教材圖片"或其他適當類型）
+  const r3 = await setDropdownByLabelInDialog(page, '類型', '教材圖片');
+  console.log('📝 類型:', r3);
+  
+  // 填寫標籤（使用圖片名稱作為標籤）
+  const r4 = await typeIntoInputByLabelInDialog(page, '標籤', title || '');
+  console.log('📝 標籤:', r4);
+  
+  console.log('� 圖片資訊填寫完成 - 名稱:', r1, '描述:', r2, '類型:', r3, '標籤:', r4);
+
+  // 如果有從 docx 解析出的圖片資料，嘗試自動上傳
+  if (imageData) {
+    console.log('📸 嘗試自動上傳從 docx 解析的圖片...');
+    
+    let uploadSuccess = false;
+    
+    try {
+      // 儲存圖片到暫存檔案
+      const tempImagePath = await saveImageToTemp(imageData, Date.now());
+      if (tempImagePath) {
+        // 尋找檔案上傳元素
+        const fileInput = await page.$('input[type="file"]');
+        if (fileInput) {
+          await fileInput.uploadFile(tempImagePath);
+          console.log('✅ 圖片已自動上傳');
+          uploadSuccess = true;
+        } else {
+          console.log('⚠️ 未找到檔案上傳元素，請手動選擇圖片');
+        }
+      }
+    } catch (error) {
+      console.error('❌ 自動上傳圖片失敗:', error.message);
+      console.log('👉 請手動選擇並上傳圖片');
+    }
+    
+    // 只有在成功上傳後才等待
+    if (uploadSuccess) {
+      try {
+        // 短暫等待上傳處理
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (waitError) {
+        // 等待錯誤不影響主要功能，靜默處理
+        console.log('⏳ 等待處理完成...');
+      }
+    }
+  }
 
   // 若要自動送出，解除註解即可
   // await page.evaluate(() => {
@@ -1012,9 +1218,22 @@ async function runOnce(page, wordPath) {
     // （你可以選擇在這裡暫停，讓你自己按「搜尋」或挑圖）
     // await ask('👉 如需馬上搜尋，請手動按「搜尋」或輸入法 Enter。挑好圖後按 Enter 繼續上傳圖片步驟...');
 
-    // 3) 上傳圖片視窗（原本就有的步驟）
-    await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
-    await fillUploadImageDialog(await getActivePage(page), cards[i].cardTitle, cards[i].cardDescription);
+    // 3) 上傳圖片視窗（增強版：支援自動上傳 docx 中的圖片）
+    const hasImageData = cards[i].imageData;
+    if (hasImageData) {
+      console.log(`🖼️  卡片 ${tag} 包含來自 docx 的圖片，將嘗試自動上傳`);
+      await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續（將自動上傳圖片）...');
+    } else {
+      console.log(`📝 卡片 ${tag} 無圖片資料，需手動上傳`);
+      await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
+    }
+    
+    await fillUploadImageDialog(
+      await getActivePage(page), 
+      cards[i].cardTitle, 
+      cards[i].cardDescription,
+      cards[i].imageData || null
+    );
   }
 
   console.log("✅ 全部卡片處理完畢！");
