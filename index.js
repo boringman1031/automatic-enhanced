@@ -1045,97 +1045,47 @@ async function typeIntoTextareaByLabelInDialog(page, labelText, value) {
   }, labelText, value);
 }
 
-async function setDropdownByLabelInDialog(page, labelText, value) {
-  try {
-    // 首先點擊下拉選單
-    const clickResult = await page.evaluate((label) => {
-      const dialogs = document.querySelectorAll('[role="dialog"]');
-      const dialog = dialogs[dialogs.length - 1];
-      if (!dialog) return 'NODIALOG';
-
-      const lab = Array.from(dialog.querySelectorAll('label,div,span,p,h6,h5'))
-        .find(el => (el.textContent || '').trim() === label);
-      
-      if (!lab) return 'NOLABEL';
-
-      const row = lab.closest('.MuiGrid-root, .MuiStack-root, div');
-      if (!row) return 'NOROW';
-
-      const dropdown = row.querySelector('[role="combobox"], select, .MuiSelect-root, .MuiAutocomplete-root') ||
-                      row.querySelector('div[aria-haspopup="listbox"]') ||
-                      row.querySelector('.MuiSelect-select');
-      
-      if (!dropdown) return 'NODROPDOWN';
-
-      dropdown.click();
-      return 'CLICKED';
-    }, labelText);
-
-    if (clickResult !== 'CLICKED') return clickResult;
-
-    // 等待選單出現
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // 選擇選項
-    const selectResult = await page.evaluate((val) => {
-      const menuItems = Array.from(document.querySelectorAll('.MuiMenuItem-root, [role="option"], .MuiAutocomplete-option'));
-      
-      // 優先尋找完全匹配的選項
-      let targetItem = menuItems.find(item => {
-        const text = (item.textContent || '').trim();
-        return text === val;
-      });
-
-      // 如果沒有完全匹配，尋找包含關鍵字的選項
-      if (!targetItem) {
-        targetItem = menuItems.find(item => {
-          const text = (item.textContent || '').trim();
-          return text.includes(val);
-        });
-      }
-
-      // 如果還是沒找到，使用第一個選項
-      if (!targetItem && menuItems.length > 0) {
-        targetItem = menuItems[0];
-      }
-
-      if (targetItem) {
-        targetItem.click();
-        return 'OK:' + (targetItem.textContent || '').trim();
-      }
-
-      return 'NOITEM';
-    }, value);
-
-    return selectResult;
-
-  } catch (error) {
-    return 'ERROR:' + error.message;
-  }
-}
-
 async function fillUploadImageDialog(page, title, description, imageData = null) {
   await getTopDialog(page); // 等視窗出現
   
-  console.log('🔍 填寫上傳圖片視窗...');
+  // 先嘗試找到對話框中的所有標籤，用於調試
+  const availableLabels = await page.evaluate(() => {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    const dialog = dialogs[dialogs.length - 1];
+    if (!dialog) return [];
+    
+    const labels = Array.from(dialog.querySelectorAll('label,div,span,p,h6,h5'))
+      .map(el => (el.textContent || '').trim())
+      .filter(text => text.length > 0 && text.length < 50);
+    
+    return [...new Set(labels)]; // 去重複
+  });
   
-  // 填寫圖片名稱
-  const r1 = await typeIntoInputByLabelInDialog(page, '圖片名稱', title || '');
-  console.log('📝 圖片名稱:', r1);
+  console.log('🔍 對話框中的可用標籤:', availableLabels);
   
-  // 填寫圖片描述
-  const r2 = await typeIntoTextareaByLabelInDialog(page, '圖片描述', description || '');
-  console.log('� 圖片描述:', r2);
+  // 嘗試多種可能的標籤文字
+  const nameLabelOptions = ['圖片名稱', '圖片標題', '名稱', '標題', 'Image Name', 'Name'];
+  const descLabelOptions = ['圖片描述', '圖片說明', '描述', '說明', 'Image Description', 'Description'];
   
-  // 填寫類型（設為"教材圖片"或其他適當類型）
-  const r3 = await setDropdownByLabelInDialog(page, '類型', '教材圖片');
-  console.log('📝 類型:', r3);
+  let r1 = 'NF', r2 = 'NF';
   
-  // 填寫標籤（使用圖片名稱作為標籤）
-  const r4 = await typeIntoInputByLabelInDialog(page, '標籤', title || '');
-  console.log('📝 標籤:', r4);
+  for (const nameLabel of nameLabelOptions) {
+    r1 = await typeIntoInputByLabelInDialog(page, nameLabel, title || '');
+    if (r1 === 'OK') {
+      console.log(`✅ 成功使用標籤: "${nameLabel}"`);
+      break;
+    }
+  }
   
-  console.log('� 圖片資訊填寫完成 - 名稱:', r1, '描述:', r2, '類型:', r3, '標籤:', r4);
+  for (const descLabel of descLabelOptions) {
+    r2 = await typeIntoTextareaByLabelInDialog(page, descLabel, description || '');
+    if (r2 === 'OK') {
+      console.log(`✅ 成功使用標籤: "${descLabel}"`);
+      break;
+    }
+  }
+  
+  console.log('🖼 圖片名稱:', r1, '圖片描述:', r2);
 
   // 如果有從 docx 解析出的圖片資料，嘗試自動上傳
   if (imageData) {

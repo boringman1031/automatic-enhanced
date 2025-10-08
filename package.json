@@ -6,7 +6,6 @@
     "start-task": "node index.js"
   },
   "dependencies": {
-    "adm-zip": "^0.5.10",
     "mammoth": "^1.6.0",
     "puppeteer": "^22.10.0",
     "yargs": "^17.7.2"
