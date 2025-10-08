@@ -1,3 +1,56 @@
-node_modules/ 
-dist/ 
-.env 
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+
+# Environment variables
+.env
+
+# Browser cache and user data (should not be committed)
+user_data/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Temporary folders
+tmp/
+temp/
+
+# Word temporary files
+~$*.docx
+~$*.doc
+
+# Python cache (if you add Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Extracted images (for future image extraction feature)
+extracted-images/
+images/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.svg

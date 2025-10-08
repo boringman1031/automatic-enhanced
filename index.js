@@ -123,7 +123,36 @@ async function parseTaskSections(value) {
 
     // 任務的單行欄位
     if (["name", "syllabus", "area", "centuryId", "mainSubjectId", "level"].includes(name)) {
-      v = firstLine(v);
+      
+      // 特殊處理下拉選單欄位，提取實際值
+      if (name === "level") {
+        // 等級欄位：在整個文本中找到類似 "8A"、"01A" 的模式
+        const levelMatch = v.match(/\b(\d{1,2}[A-D])\b/);
+        if (levelMatch) {
+          v = levelMatch[1];
+        } else {
+          v = firstLine(v);
+        }
+      } else if (name === "centuryId") {
+        // 世紀欄位：提取類似 "21世紀"、"21 世紀" 的值
+        const centuryMatch = v.match(/(\d{1,2}\s*世紀|西元前|公元前)/);
+        if (centuryMatch) {
+          v = centuryMatch[1].replace(/\s+/g, ""); // 移除空格
+        } else {
+          v = firstLine(v);
+        }
+      } else {
+        // 其他欄位先取第一行，再做特殊處理
+        v = firstLine(v);
+        
+        if (name === "mainSubjectId") {
+          // 主要學科：提取學科名稱（去除數字編號等）
+          v = v.replace(/^\d+\s*/, "").replace(/^其他學科\s*/, "").trim();
+        } else if (name === "area") {
+          // 地點：直接使用，但清理格式
+          v = v.replace(/^\d+\s*/, "").trim();
+        }
+      }
     }
     if (name.startsWith("missionHintSet")) {
       v = v.split("\n").map(s => s.replace(/（限25字[^）]*）/g, "").trim()).filter(Boolean)[0] || "";
@@ -147,7 +176,7 @@ function parseCards(value) {
     "文字內容": "cardDescription",
     "學科": "cardSubjectId",
     "類別": "cardType",
-    "課綱": "cardSyllabus"
+    "課綱": "syllabus"  // 修改為 syllabus 以匹配 mapping.json
   };
 
   const lines = value.split("\n").map(s => s.trim()).filter(Boolean);
@@ -195,24 +224,143 @@ async function parseWord(wordPath) {
   const { value } = await mammoth.extractRawText({ path: wordPath });
   const taskData = await parseTaskSections(value);
   const cardDataList = parseCards(value);
+  
+  // 將任務的課綱資訊填入到所有卡片中
+  if (taskData.syllabus && cardDataList.length > 0) {
+    for (const card of cardDataList) {
+      if (!card.syllabus) {  // 如果卡片沒有自己的課綱資訊
+        card.syllabus = taskData.syllabus;
+      }
+    }
+  }
+  
   return { taskData, cardDataList };
 }
 
 // ---------- DOM 寫入 ----------
 async function setByNameNative(page, name, value) {
   const selector = `[name="${cssEscape(name)}"]`;
+  
+  // 如果是課綱欄位，使用 Puppeteer 的真實打字模擬
+  if (name === "syllabus") {
+    console.log(`🔍 [課綱真實打字] 開始處理: ${preview(value)}`);
+    
+    try {
+      // 先找到所有課綱輸入框，選擇最後一個可見的（通常是用戶正在編輯的）
+      const targetInput = await page.evaluate(() => {
+        const inputs = document.querySelectorAll('[name="syllabus"]');
+        for (let i = inputs.length - 1; i >= 0; i--) {
+          const input = inputs[i];
+          if (input.offsetParent !== null && input.type === 'text') {
+            return {
+              found: true,
+              id: input.id,
+              visible: true,
+              index: i,
+              total: inputs.length
+            };
+          }
+        }
+        return { found: false, total: inputs.length };
+      });
+      
+      if (!targetInput.found) {
+        console.log(`❌ [課綱真實打字] 找不到可見的課綱輸入框`);
+        return "NF";
+      }
+      
+      console.log(`🎯 [課綱真實打字] 選擇輸入框 ${targetInput.index + 1}/${targetInput.total}, ID: ${targetInput.id}`);
+      
+      // 使用特定的 ID 選擇器，手動轉義特殊字符
+      const escapedId = targetInput.id.replace(/:/g, '\\:');
+      const specificSelector = `#${escapedId}`;
+      
+      // 確認元素存在並可見
+      await page.waitForSelector(specificSelector, { visible: true, timeout: 3000 });
+      
+      // 點擊輸入框聚焦
+      await page.click(specificSelector);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 清空現有內容 (Ctrl+A + Delete)
+      await page.keyboard.down('Control');
+      await page.keyboard.press('KeyA');
+      await page.keyboard.up('Control');
+      await page.keyboard.press('Delete');
+      
+      // 等待清空完成
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // 使用 Puppeteer 的 type 方法真實打字
+      await page.type(specificSelector, value, { delay: 5 }); // 每個字符間隔5ms
+      
+      // 等待輸入完成，讓自動完成等功能穩定
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 點擊輸入框外的區域來失焦，而不是按 Escape
+      await page.evaluate((sel) => {
+        const input = document.querySelector(sel);
+        if (input) {
+          input.blur(); // 溫和地失去焦點
+        }
+      }, specificSelector);
+      
+      // 再等待一下
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // 驗證輸入結果
+      const finalValue = await page.evaluate((sel) => {
+        const input = document.querySelector(sel);
+        return input ? input.value : "NO_INPUT";
+      }, specificSelector);
+      
+      console.log(`🔍 [課綱真實打字] 最終結果: ${preview(finalValue)}`);
+      
+      if (finalValue === value) {
+        return "OK";
+      } else if (finalValue.includes(value)) {
+        console.log(`⚠️ [課綱真實打字] 包含期望值但有額外內容，嘗試重新設置`);
+        
+        // 嘗試直接設置正確的值
+        await page.evaluate((sel, val) => {
+          const input = document.querySelector(sel);
+          if (input) {
+            input.focus();
+            input.value = val;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.blur();
+          }
+        }, specificSelector, value);
+        
+        return "OK";
+      } else {
+        console.log(`⚠️ [課綱真實打字] 值不匹配，期望: ${preview(value)}, 實際: ${preview(finalValue)}`);
+        return "VALUE_MISMATCH";
+      }
+      
+    } catch (error) {
+      console.log(`❌ [課綱真實打字] 失敗: ${error.message}`);
+      // 如果真實打字失敗，嘗試標準方法
+    }
+  }
+  
+  // 標準處理方式
   return page.evaluate((sel, val) => {
     const el = document.querySelector(sel);
     if (!el) return "NF";
+    
     const isTA = el.tagName.toLowerCase() === "textarea";
     const proto = isTA ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const desc = Object.getOwnPropertyDescriptor(proto, "value");
     if (!desc || !desc.set) return "NOSETTER";
+    
     el.focus();
     desc.set.call(el, val);
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
     el.blur();
+    
     return "OK";
   }, selector, value);
 }
@@ -274,6 +422,287 @@ async function typeIntoRichByLabel(page, labelText, value) {
   }, labelText, value);
 }
 
+// ---------- 下拉選單處理 ---------- 
+async function setByDropdown(page, labelText, value) {
+  try {
+    const result = await page.evaluate(async (label, val) => {
+      // 精確的下拉選單ID映射
+      const fieldMappings = {
+        '主要學科': 'mui-component-select-mainSubjectId',
+        '等級': 'mui-component-select-level', 
+        '世紀': 'mui-component-select-centuryId',
+        '課綱': 'mui-component-select-syllabus',
+        '地點': 'mui-component-select-area'
+      };
+      
+      // 直接通過精確的ID查找下拉選單
+      if (!fieldMappings[label]) {
+        return "UNSUPPORTED_FIELD";
+      }
+      
+      const dropdown = document.getElementById(fieldMappings[label]);
+      if (!dropdown) {
+        return "ELEMENT_NOT_FOUND:" + fieldMappings[label];
+      }
+      
+      // 確認這確實是一個下拉選單
+      if (dropdown.getAttribute('role') !== 'combobox') {
+        return "NOT_COMBOBOX";
+      }
+      
+      console.log('點擊下拉選單:', fieldMappings[label]);
+      
+      // 使用更真實的點擊方式
+      dropdown.focus();
+      dropdown.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      dropdown.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      dropdown.click();
+      
+      return "CLICKED:" + fieldMappings[label];
+    }, labelText, value);
+
+    if (!result.startsWith("CLICKED:")) {
+      return result;
+    }
+
+    // 等待選項列表出現，使用更簡單的等待條件
+    try {
+      await page.waitForFunction(
+        () => {
+          const listboxes = document.querySelectorAll('ul[role="listbox"]');
+          return listboxes.length > 0;
+        },
+        { timeout: 3000 }
+      );
+    } catch (e) {
+      // 如果等待失敗，仍然嘗試查找選項列表
+      console.log('等待超時，但仍嘗試查找選項列表...');
+    }
+
+    // 給UI一點時間完全加載選項
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 處理選項選擇
+    const selectResult = await page.evaluate(async (val) => {
+      // 獲取所有可能的選項列表，取最後一個（最新打開的）
+      const listboxes = document.querySelectorAll('ul[role="listbox"]');
+      
+      if (listboxes.length === 0) {
+        return "NOLISTBOX";
+      }
+      
+      const listbox = listboxes[listboxes.length - 1];
+
+      // 基於實際測試，直接查找 MuiMenuItem-root
+      const options = Array.from(listbox.querySelectorAll('li.MuiMenuItem-root'));
+      
+      if (options.length === 0) {
+        return "NOOPTIONS";
+      }
+      
+      // 完全匹配
+      const targetOption = options.find(opt => {
+        const text = (opt.textContent || "").trim();
+        return text === val;
+      });
+
+      if (targetOption) {
+        targetOption.click();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return "OK";
+      } else {
+        // 部分匹配
+        const partialMatch = options.find(opt => {
+          const text = (opt.textContent || "").toLowerCase().trim();
+          const searchVal = val.toLowerCase().trim();
+          return text.includes(searchVal) || searchVal.includes(text);
+        });
+        
+        if (partialMatch) {
+          partialMatch.click();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return "PARTIAL";
+        }
+      }
+      
+      // 返回可用選項供調試
+      const availableOptions = options.map(opt => (opt.textContent || "").trim()).slice(0, 8);
+      return "NOPTION:" + availableOptions.join(",");
+    }, value);
+
+    return selectResult;
+
+  } catch (error) {
+    return "TIMEOUT:" + error.message;
+  }
+}
+
+// 使用 mapping.dropdown 進行值映射
+function mapDropdownValue(fieldName, value) {
+  if (!mapping.dropdown) return value;
+  
+  const mappings = {
+    'mainSubjectId': mapping.dropdown.subject,
+    'cardSubjectId': mapping.dropdown.subject,
+    'cardType': mapping.dropdown.type,
+    'level': mapping.dropdown.level,
+    'centuryId': mapping.dropdown.century,
+    'syllabus': mapping.dropdown.syllabus,
+    'cardSyllabus': mapping.dropdown.syllabus,
+    'area': mapping.dropdown.area
+  };
+  
+  const fieldMapping = mappings[fieldName];
+  if (fieldMapping && fieldMapping[value]) {
+    return fieldMapping[value];
+  }
+  
+  return value;
+}
+
+// ---------- 卡片頁下拉選單處理 ----------
+async function setByDropdownForCard(page, labelText, value) {
+  try {
+    const result = await page.evaluate(async (label, val) => {
+      // 卡片頁面的下拉選單可能使用不同的ID模式
+      const fieldMappings = {
+        '學科': ['mui-component-select-cardSubjectId', 'cardSubjectId', 'subject'],
+        '類別': ['mui-component-select-cardType', 'cardType', 'type'],
+        '課綱': ['mui-component-select-cardSyllabus', 'cardSyllabus', 'syllabus']
+      };
+      
+      let dropdown = null;
+      
+      // 嘗試多個可能的ID
+      if (fieldMappings[label]) {
+        for (const id of fieldMappings[label]) {
+          dropdown = document.getElementById(id);
+          if (dropdown) {
+            console.log('卡片下拉選單找到ID:', id);
+            break;
+          }
+        }
+      }
+      
+      // 如果通過ID找不到，嘗試通過標籤文字查找
+      if (!dropdown) {
+        console.log('通過文字標籤查找卡片下拉選單:', label);
+        
+        const labels = Array.from(document.querySelectorAll("*"))
+          .filter(el => {
+            const text = (el.textContent || "").trim();
+            return text === label && (el.tagName === 'LABEL' || el.tagName === 'SPAN' || el.tagName === 'DIV');
+          });
+          
+        for (const lab of labels) {
+          let container = lab;
+          for (let i = 0; i < 5; i++) {
+            container = container.parentElement;
+            if (!container) break;
+            
+            const potentialDropdown = container.querySelector('[role="combobox"]');
+            if (potentialDropdown) {
+              dropdown = potentialDropdown;
+              console.log('找到卡片下拉選單在容器中');
+              break;
+            }
+          }
+          if (dropdown) break;
+        }
+      }
+      
+      if (!dropdown) {
+        return "NODROPDOWN";
+      }
+      
+      // 確認這確實是一個下拉選單
+      if (dropdown.getAttribute('role') !== 'combobox') {
+        return "NOT_COMBOBOX";
+      }
+      
+      console.log('點擊卡片下拉選單');
+      
+      // 使用真實的點擊方式
+      dropdown.focus();
+      dropdown.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      dropdown.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      dropdown.click();
+      
+      return "CLICKED";
+    }, labelText, value);
+
+    if (result !== "CLICKED") {
+      return result;
+    }
+
+    // 等待選項列表出現
+    try {
+      await page.waitForFunction(
+        () => {
+          const listboxes = document.querySelectorAll('ul[role="listbox"]');
+          return listboxes.length > 0;
+        },
+        { timeout: 3000 }
+      );
+    } catch (e) {
+      console.log('等待卡片選項列表超時，但仍嘗試查找...');
+    }
+
+    // 給UI一點時間完全加載選項
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // 處理選項選擇
+    const selectResult = await page.evaluate(async (val) => {
+      const listboxes = document.querySelectorAll('ul[role="listbox"]');
+      
+      if (listboxes.length === 0) {
+        return "NOLISTBOX";
+      }
+      
+      const listbox = listboxes[listboxes.length - 1];
+      const options = Array.from(listbox.querySelectorAll('li.MuiMenuItem-root'));
+      
+      if (options.length === 0) {
+        return "NOOPTIONS";
+      }
+      
+      // 完全匹配
+      const targetOption = options.find(opt => {
+        const text = (opt.textContent || "").trim();
+        return text === val;
+      });
+
+      if (targetOption) {
+        targetOption.click();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return "OK";
+      } else {
+        // 部分匹配
+        const partialMatch = options.find(opt => {
+          const text = (opt.textContent || "").toLowerCase().trim();
+          const searchVal = val.toLowerCase().trim();
+          return text.includes(searchVal) || searchVal.includes(text);
+        });
+        
+        if (partialMatch) {
+          partialMatch.click();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return "PARTIAL";
+        }
+      }
+      
+      // 返回可用選項供調試
+      const availableOptions = options.map(opt => (opt.textContent || "").trim()).slice(0, 8);
+      return "NOPTION:" + availableOptions.join(",");
+    }, value);
+
+    return selectResult;
+
+  } catch (error) {
+    return "TIMEOUT:" + error.message;
+  }
+}
+
 // ---------- 任務頁填寫 ----------
 async function waitForTaskReady(page) {
   try {
@@ -285,46 +714,135 @@ async function fillTask(page, taskData) {
   console.log("✍️ 任務頁開始填寫...");
   await waitForTaskReady(page);
 
+  // 定義哪些欄位是下拉選單 - 只處理確定存在的
+  const dropdownFields = ['mainSubjectId', 'level', 'centuryId'];
+
   for (const [title, cfg] of Object.entries(mapping.task)) {
     const name = typeof cfg === "string" ? cfg : cfg.name;
     const isRich = !!(typeof cfg === "object" && cfg.rich);
+    const isDropdown = dropdownFields.includes(name);
     const labels = (typeof cfg === "object" && cfg.label) ? cfg.label : [title];
-    const val = taskData[name];
+    let val = taskData[name];
+    
     if (!val) continue;
 
+    // 如果是下拉選單欄位，先進行值映射
+    if (isDropdown) {
+      const mappedVal = mapDropdownValue(name, val);
+      val = mappedVal;
+    }
+
     let done = false;
-    // 先試 name
-    const r1 = await setByNameNative(page, name, val);
-    if (r1 === "OK") { done = true; }
-    // 富文本備援
-    if (!done && isRich) {
+    
+    // 如果是下拉選單，使用下拉選單處理
+    if (isDropdown) {
       for (const lb of labels) {
-        const r2 = await typeIntoRichByLabel(page, lb, val);
-        if (r2 === "OK") { done = true; break; }
+        const r = await setByDropdown(page, lb, val);
+        if (r === "OK" || r === "PARTIAL") { 
+          done = true; 
+          console.log(`✅ ${name} (dropdown): ${preview(val)} ${r === "PARTIAL" ? "(部分匹配)" : ""}`);
+          break; 
+        } else if (r.startsWith("NOPTION:")) {
+          console.log(`⚠️ ${name} 找不到選項 "${val}"，可用選項: ${r.substring(8)}`);
+        } else {
+          console.log(`❌ ${name} 下拉選單操作失敗: ${r}`);
+        }
       }
     }
-    console.log(done ? `✅ ${name}: ${preview(val)}` : `⚠️ 找不到欄位: ${name}`);
+    
+    // 如果下拉選單失敗或不是下拉選單，嘗試原有方法
+    if (!done) {
+      // 先試 name
+      const r1 = await setByNameNative(page, name, val);
+      if (r1 === "OK") { done = true; }
+      // 富文本備援
+      if (!done && isRich) {
+        for (const lb of labels) {
+          const r2 = await typeIntoRichByLabel(page, lb, val);
+          if (r2 === "OK") { done = true; break; }
+        }
+      }
+    }
+    
+    if (!done && !isDropdown) {
+      console.log(`⚠️ 找不到欄位: ${name}`);
+    } else if (!isDropdown) {
+      console.log(`✅ ${name}: ${preview(val)}`);
+    }
   }
 
   console.log("🎉 任務頁完成！");
 }
 
-// ---------- 卡片頁填寫（僅標題與文字內容） ----------
+// ---------- 卡片頁填寫（統一處理方式） ----------
 async function fillOneCard(page, card, index) {
-  const title = card.cardTitle || "";
-  const desc  = card.cardDescription || "";
+  console.log(`🎴 開始填寫卡片 ${index + 1}...`);
 
-  // 卡片名稱（單行）
-  if (title) {
-    const r = await typeIntoInputByLabel(page, "卡片名稱", title);
-    console.log(r === "OK" ? `✅ cardTitle: ${preview(title)}` : "⚠️ 找不到『卡片名稱』輸入框");
+  // 定義卡片的下拉選單欄位
+  const cardDropdownFields = ['cardSubjectId', 'cardType'];
+
+  for (const [title, cfg] of Object.entries(mapping.card)) {
+    const name = typeof cfg === "string" ? cfg : cfg.name;
+    const isRich = !!(typeof cfg === "object" && cfg.rich);
+    const isDropdown = cardDropdownFields.includes(name);
+    const labels = (typeof cfg === "object" && cfg.label) ? cfg.label : [title];
+    let val = card[name];
+    
+    if (!val) continue;
+
+    // 如果是下拉選單欄位，先進行值映射
+    if (isDropdown) {
+      const mappedVal = mapDropdownValue(name, val);
+      val = mappedVal;
+    }
+
+    let done = false;
+    
+    // 如果是下拉選單，使用下拉選單處理
+    if (isDropdown) {
+      for (const lb of labels) {
+        const r = await setByDropdownForCard(page, lb, val);
+        if (r === "OK" || r === "PARTIAL") { 
+          done = true; 
+          console.log(`✅ ${name} (dropdown): ${preview(val)} ${r === "PARTIAL" ? "(部分匹配)" : ""}`);
+          break; 
+        } else if (r.startsWith("NOPTION:")) {
+          console.log(`⚠️ ${name} 找不到選項 "${val}"，可用選項: ${r.substring(8)}`);
+        } else {
+          console.log(`❌ ${name} 下拉選單操作失敗: ${r}`);
+        }
+      }
+    }
+    
+    // 如果下拉選單失敗或不是下拉選單，嘗試原有方法
+    if (!done) {
+      // 先試 name
+      const r1 = await setByNameNative(page, name, val);
+      if (r1 === "OK") { done = true; }
+      // 富文本備援
+      if (!done && isRich) {
+        for (const lb of labels) {
+          const r2 = await typeIntoRichByLabel(page, lb, val);
+          if (r2 === "OK") { done = true; break; }
+        }
+      }
+      // 文字輸入備援
+      if (!done) {
+        for (const lb of labels) {
+          const r3 = await typeIntoInputByLabel(page, lb, val);
+          if (r3 === "OK") { done = true; break; }
+        }
+      }
+    }
+    
+    if (!done && !isDropdown) {
+      console.log(`⚠️ 找不到卡片欄位: ${name}`);
+    } else if (!isDropdown) {
+      console.log(`✅ ${name}: ${preview(val)}`);
+    }
   }
 
-  // 文字內容（多行/textarea/contenteditable 都可）
-  if (desc) {
-    const r = await typeIntoRichByLabel(page, "文字內容", desc);
-    console.log(r === "OK" ? `✅ cardDescription: ${preview(desc)}` : "⚠️ 找不到『文字內容』輸入框");
-  }
+  console.log(`🎉 卡片 ${index + 1} 填寫完成！`);
 }
 
 // ---------- 上傳圖片視窗：兩欄位自動填 ----------
