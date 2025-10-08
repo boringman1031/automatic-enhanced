@@ -4,7 +4,8 @@
 
 這個工具使用 Node.js + Puppeteer 技術，能夠：
 - 📄 **智能解析** Word 文檔中的教育任務和知識卡片內容
-- 🖥️ **自動化填寫** 網頁表單（支援複雜的下拉選單和富文本編輯器）
+- �️ **自動圖片處理** 解析 docx 中的圖片並自動上傳（新功能！）
+- �🖥️ **自動化填寫** 網頁表單（支援複雜的下拉選單和富文本編輯器）
 - 🎯 **批量處理** 最多 12 張知識卡片
 - 🔄 **循環模式** 連續處理多個 Word 檔案
 - 🧠 **智能匹配** 自動處理學科、等級、課綱等下拉選單映射
@@ -54,17 +55,20 @@ docs/
 ### 3️⃣ 基本使用
 
 ```bash
-# 處理單一檔案（任務 + 卡片）
-node index.js --word ./docs/第一題.docx
+# 🚀 最簡單的用法（推薦）- 完整流程 + 自動圖片
+node index.js -w ./docs/第一題.docx
 
 # 只處理任務頁面
-node index.js --word ./docs/第一題.docx --mode task
+node index.js -w ./docs/第一題.docx --mode task
 
 # 只處理卡片頁面
-node index.js --word ./docs/第一題.docx --mode card
+node index.js -w ./docs/第一題.docx --mode card
+
+# 停用自動圖片功能
+node index.js -w ./docs/第一題.docx --no-image
 
 # 循環處理多個檔案
-node index.js --word ./docs/第一題.docx --loop
+node index.js -w ./docs/第一題.docx --loop
 ```
 
 ---
@@ -109,7 +113,13 @@ node index.js --word ./docs/第一題.docx --loop
    - ✅ 學科下拉選單匹配
    - ✅ 類別下拉選單（人物、事件、時間、地點等）
 
-2. **智能圖片搜尋功能**：
+2. **🆕 自動圖片處理（新功能）**：
+   - 📸 **智能解析**：自動從 docx 檔案中提取圖片
+   - 🔗 **圖片關聯**：按順序將圖片與卡片關聯（1-1 對應第1張圖片，1-2 對應第2張圖片...）
+   - 💾 **自動儲存**：圖片儲存到 `temp_images/` 資料夾
+   - ⚡ **自動上傳**：在上傳圖片對話框中自動選擇對應圖片
+
+3. **智能圖片搜尋功能**：
    ```
    👉 請在卡片頁按【搜尋現有圖片】打開視窗，準備好後按 Enter...
    ```
@@ -117,19 +127,28 @@ node index.js --word ./docs/第一題.docx --loop
    - 🖼️ 讓您快速查找現有圖片資源
    - ⚡ 避免重複上傳相同圖片
 
-3. **自動化圖片上傳**：
+4. **自動化圖片上傳**：
    ```
-   👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter...
+   �️ 卡片 1-1 包含來自 docx 的圖片，將嘗試自動上傳
+   �👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續（將自動上傳圖片）...
    ```
    - 📝 圖片名稱：自動填入卡片名稱
    - 📄 圖片描述：自動填入卡片文字內容
+   - 📸 **自動選擇檔案**：程式會自動選擇對應的圖片檔案
 
 #### **進度顯示範例**：
 ```
+📂 解析 Word: ./docs/第一題.docx
+📸 從 docx 檔案中提取到 12 張圖片
+🖼️  卡片 1-1 (祕密投票) 已關聯圖片
+...
 🎴 開始填寫卡片 1...
-✅ cardTitle: 古代文明的起源
-✅ cardDescription: 人類最早的文明起源於美索不達米亞地區...
-✅ cardSubjectId (dropdown): 社會
+✅ cardTitle: 祕密投票
+✅ cardDescription: 讓投票人能自由表達投票意志的原則。
+✅ cardSubjectId (dropdown): 公民
+🖼️  卡片 1-1 包含來自 docx 的圖片，將嘗試自動上傳
+📸 嘗試自動上傳從 docx 解析的圖片...
+✅ 圖片已自動上傳
 🎉 卡片 1 填寫完成！
 ```
 
@@ -137,13 +156,15 @@ node index.js --word ./docs/第一題.docx --loop
 
 ## 🔧 命令列參數詳解
 
-| 參數 | 類型 | 預設值 | 說明 |
-|------|------|--------|------|
-| `--word` | string | - | **必須**，指定要處理的 Word 檔案路徑 |
-| `--mode` | string | `task+card` | 處理模式：`task`、`card`、`task+card` |
-| `--loop` | boolean | `false` | 啟用循環模式，連續處理多個檔案 |
-| `--close` | boolean | `false` | 處理完成後自動關閉瀏覽器 |
-| `--url` | string | - | 自訂起始頁面 URL |
+| 參數 | 別名 | 類型 | 預設值 | 說明 |
+|------|------|------|--------|------|
+| `--word` | `-w` | string | - | **必須**，指定要處理的 Word 檔案路徑 |
+| `--mode` | - | string | `task+card` | 處理模式：`task`、`card`、`task+card` |
+| `--auto-image` | `-i` | boolean | `true` | 🆕 自動解析並上傳 docx 中的圖片 |
+| `--no-image` | - | boolean | `false` | 停用自動圖片功能 |
+| `--loop` | - | boolean | `false` | 啟用循環模式，連續處理多個檔案 |
+| `--close` | - | boolean | `false` | 處理完成後自動關閉瀏覽器 |
+| `--url` | - | string | - | 自訂起始頁面 URL |
 
 ### 🔄 **循環模式詳解**
 
@@ -157,17 +178,42 @@ node index.js --word ./docs/第一題.docx --loop
 ### 📊 **使用情境範例**
 
 ```bash
-# 情境1：單一檔案完整處理
-node index.js --word "docs/第一題.docx" --mode task+card
+# 情境1：最簡單用法（推薦）- 完整流程 + 自動圖片
+node index.js -w docs/第一題.docx
 
-# 情境2：批量處理多個檔案
-node index.js --word "docs/第一題.docx" --loop
+# 情境2：批量處理多個檔案（含自動圖片）
+node index.js -w docs/第一題.docx --loop
 
 # 情境3：只更新任務內容，跳過卡片
-node index.js --word "docs/第一題.docx" --mode task
+node index.js -w docs/第一題.docx --mode task
 
-# 情境4：指定起始頁面並自動關閉
-node index.js --word "docs/第一題.docx" --url "https://adl.edu.tw/twa-admin/edit/missionEdit" --close
+# 情境4：完整流程但停用自動圖片（需手動上傳）
+node index.js -w docs/第一題.docx --no-image
+
+# 情境5：指定起始頁面並自動關閉
+node index.js -w docs/第一題.docx --url "https://adl.edu.tw/twa-admin/edit/missionEdit" --close
+
+# 情境6：使用舊版完整語法（仍然支援）
+node index.js --word docs/第一題.docx --mode task+card --auto-image
+```
+
+### 🆕 **自動圖片功能說明**
+
+#### **圖片處理流程**：
+1. **解析階段**：程式自動從 docx 檔案中提取所有圖片
+2. **關聯階段**：按順序將圖片與卡片關聯（第1張圖片→卡片1-1，第2張圖片→卡片1-2...）
+3. **儲存階段**：圖片暫存到 `temp_images/` 資料夾
+4. **上傳階段**：在卡片編輯時自動選擇對應圖片上傳
+
+#### **執行時的提示訊息**：
+```bash
+📸 從 docx 檔案中提取到 12 張圖片
+🖼️  卡片 1-1 (祕密投票) 已關聯圖片
+🖼️  卡片 1-2 (公開投票) 已關聯圖片
+...
+📸 嘗試自動上傳從 docx 解析的圖片...
+💾 圖片已儲存至: temp_images/card_xxx.png
+✅ 圖片已自動上傳
 ```
 
 ---
@@ -368,6 +414,20 @@ Error: Could not find Chrome or Edge
 2. 檢查瀏覽器安裝路徑是否標準
 3. 嘗試手動指定瀏覽器路徑
 
+#### 🆕 **「自動圖片功能問題」**
+```bash
+📷 docx 檔案中未找到圖片，將使用手動上傳模式
+```
+**可能原因**：
+1. docx 檔案中沒有嵌入圖片
+2. 圖片格式不支援（僅支援 PNG、JPG）
+3. 圖片位於文檔的特殊位置
+
+**解決方案**：
+- 使用 `--no-image` 停用自動圖片功能
+- 確認 docx 檔案中的圖片是直接插入的（非連結）
+- 手動上傳模式仍可正常使用
+
 ### 🛠️ **偵錯模式**
 
 啟用詳細日誌輸出：
@@ -379,7 +439,14 @@ DEBUG=* node index.js --word ./docs/第一題.docx
 
 ## 📝 更新日誌
 
-### v1.2.0 (最新版本)
+### v2.0.0 (最新版本) 🆕
+- 🖼️ **新增自動圖片功能**：自動從 docx 解析圖片並上傳
+- ⚡ **簡化 CLI 語法**：支援 `-w` 簡寫，默認啟用自動圖片
+- 📁 **暫存圖片管理**：圖片儲存到 `temp_images/` 資料夾
+- 🔗 **智能圖片關聯**：按順序自動關聯圖片與卡片
+- 🎯 **增強錯誤處理**：改善圖片上傳失敗時的提示
+
+### v1.2.0
 - ✨ 新增課綱欄位真實打字模擬
 - 🔧 改善下拉選單匹配邏輯
 - 🐛 修復卡片順序處理問題
