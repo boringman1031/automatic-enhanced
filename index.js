@@ -266,7 +266,7 @@ function parseCards(value) {
     cards.push(cur);
   }
 
-  // 正規化：名稱取第一行；內容清理；（不再處理學科/類別）
+  // 正規化：名稱取第一行；內容清理；學科/類別也需要正規化
   for (const c of cards) {
     if (c.cardTitle) c.cardTitle = firstLine(c.cardTitle);
     if (c.cardDescription) {
@@ -274,8 +274,25 @@ function parseCards(value) {
       cleaned = cleaned.split("\n").map(s => s.trim()).filter(Boolean)[0] || ""; // 只取第一個非空行
       c.cardDescription = cleaned;
     }
-    // if (c.cardSubjectId) c.cardSubjectId = firstLine(c.cardSubjectId);
-    // if (c.cardType)      c.cardType      = firstLine(c.cardType);
+    // 修正：學科和類別欄位也需要正規化處理
+    if (c.cardSubjectId) {
+      let subject = firstLine(c.cardSubjectId);
+      // 清理常見的干擾文字
+      subject = subject.replace(/^圖片.*$/i, "").trim();
+      subject = subject.replace(/（.*）/g, "").trim(); // 移除括號內容
+      subject = subject.replace(/\s+/g, ""); // 移除空白
+      c.cardSubjectId = subject;
+    }
+    if (c.cardType) {
+      let type = firstLine(c.cardType);
+      type = type.replace(/^圖片.*$/i, "").trim();
+      type = type.replace(/（.*）/g, "").trim();
+      type = type.replace(/\s+/g, "");
+      c.cardType = type;
+    }
+    if (c.syllabus) {
+      c.syllabus = firstLine(c.syllabus);
+    }
   }
 
   // 固定只取 12 張
@@ -860,6 +877,12 @@ async function fillTask(page, taskData) {
 // ---------- 卡片頁填寫（統一處理方式） ----------
 async function fillOneCard(page, card, index) {
   console.log(`🎴 開始填寫卡片 ${index + 1}...`);
+  
+  // 調試：顯示解析出的卡片數據
+  console.log(`🔍 卡片數據預覽:`);
+  console.log(`   - 卡片名稱: "${card.cardTitle || ''}"`);
+  console.log(`   - 學科: "${card.cardSubjectId || ''}"`);
+  console.log(`   - 類別: "${card.cardType || ''}"`);
 
   // 定義卡片的下拉選單欄位
   const cardDropdownFields = ['cardSubjectId', 'cardType'];
