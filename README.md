@@ -18,7 +18,7 @@
 ## 系統需求
 
 - **Node.js** 18+ 版本
-- **Windows** 作業系統（支援 Chrome/Edge 瀏覽器）
+- **作業系統** Windows / macOS（支援 Chrome/Edge/Safari 瀏覽器）
 - **Word 文檔** (.docx 格式)
 - **網路連線** (需訪問目標教育平台)
 
