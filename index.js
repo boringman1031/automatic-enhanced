@@ -78,15 +78,12 @@ function stripBracketNotesBlock(s) {
   for (let line of lines) {
     const trimmed = line.trim();
 
-    // 整行只有括弧說明 -> 丟掉
     if (/^[（(][^）)]+[）)]$/.test(trimmed)) continue;
 
-    // 第一段若以括弧說明起頭，僅剝掉這段的前導括弧，保留後面正文
     if (!firstKeptSeen && /^[（(][^）)]+[）)]/.test(trimmed)) {
       line = line.replace(/^[（(][^）)]+[）)]\s*/, "");
     }
 
-    // 被誤捲的小標題 -> 丟掉
     if (neighborHeadingsRE.test(trimmed)) continue;
 
     if (line.trim().length && !firstKeptSeen) firstKeptSeen = true;
@@ -146,7 +143,6 @@ async function saveImageToTemp(imageData, cardIndex) {
     const fileName = `card_${cardIndex + 1}.${ext}`;
     const filePath = path.join(tempDir, fileName);
     
-    // 將 base64 轉換為 buffer 並儲存
     const buffer = Buffer.from(imageData.base64Data, 'base64');
     fs.writeFileSync(filePath, buffer);
     
@@ -186,7 +182,6 @@ async function parseTaskSections(value) {
     // 任務的單行欄位
     if (["name", "syllabus", "area", "centuryId", "mainSubjectId", "level"].includes(name)) {
       
-      // 特殊處理下拉選單欄位，提取實際值
       if (name === "level") {
         // 等級欄位：在整個文本中找到類似 "8A"、"01A" 的模式
         const levelMatch = v.match(/\b(\d{1,2}[A-D])\b/);
@@ -199,12 +194,12 @@ async function parseTaskSections(value) {
         // 世紀欄位：提取類似 "21世紀"、"21 世紀" 的值
         const centuryMatch = v.match(/(\d{1,2}\s*世紀|西元前|公元前)/);
         if (centuryMatch) {
-          v = centuryMatch[1].replace(/\s+/g, ""); // 移除空格
+          v = centuryMatch[1].replace(/\s+/g, ""); 
         } else {
           v = firstLine(v);
         }
       } else {
-        // 其他欄位先取第一行，再做特殊處理
+        
         v = firstLine(v);
         
         if (name === "mainSubjectId") {
@@ -220,7 +215,6 @@ async function parseTaskSections(value) {
       v = v.split("\n").map(s => s.replace(/（限25字[^）]*）/g, "").trim()).filter(Boolean)[0] || "";
     }
 
-    // 只對這兩個欄位剝括弧備註/小標題
     if (name === "description" || name === "answerDescription") {
       v = stripBracketNotesBlock(v);
     }
@@ -238,7 +232,7 @@ function parseCards(value) {
     "文字內容": "cardDescription",
     "學科": "cardSubjectId",
     "類別": "cardType",
-    "課綱": "syllabus"  // 修改為 syllabus 以匹配 mapping.json
+    "課綱": "syllabus" 
   };
 
   const lines = value.split("\n").map(s => s.trim()).filter(Boolean);
@@ -248,7 +242,7 @@ function parseCards(value) {
 
   for (const line of lines) {
     if (labels.includes(line)) {
-      // 新卡片開始：遇到下一個「卡片名稱」
+      
       if (line === "卡片名稱") {
         if (cur && (cur.cardTitle || cur.cardDescription)) {
           cards.push(cur);
@@ -266,21 +260,21 @@ function parseCards(value) {
     cards.push(cur);
   }
 
-  // 正規化：名稱取第一行；內容清理；學科/類別也需要正規化
+  // 正規化：名稱取第一行；內容清理；學科/類別正規化
   for (const c of cards) {
     if (c.cardTitle) c.cardTitle = firstLine(c.cardTitle);
     if (c.cardDescription) {
       let cleaned = stripBracketNotesBlock(cleanTextBase(c.cardDescription));
-      cleaned = cleaned.split("\n").map(s => s.trim()).filter(Boolean)[0] || ""; // 只取第一個非空行
+      cleaned = cleaned.split("\n").map(s => s.trim()).filter(Boolean)[0] || ""; 
       c.cardDescription = cleaned;
     }
-    // 修正：學科和類別欄位也需要正規化處理
+    // 學科和類別欄位正規化處理
     if (c.cardSubjectId) {
       let subject = firstLine(c.cardSubjectId);
-      // 清理常見的干擾文字
+
       subject = subject.replace(/^圖片.*$/i, "").trim();
-      subject = subject.replace(/（.*）/g, "").trim(); // 移除括號內容
-      subject = subject.replace(/\s+/g, ""); // 移除空白
+      subject = subject.replace(/（.*）/g, "").trim(); 
+      subject = subject.replace(/\s+/g, "");
       c.cardSubjectId = subject;
     }
     if (c.cardType) {
@@ -295,7 +289,6 @@ function parseCards(value) {
     }
   }
 
-  // 固定只取 12 張
   return cards.slice(0, 12);
 }
 
@@ -304,10 +297,9 @@ async function parseWord(wordPath) {
   const taskData = await parseTaskSections(value);
   const cardDataList = parseCards(value);
   
-  // 將任務的課綱資訊填入到所有卡片中
   if (taskData.syllabus && cardDataList.length > 0) {
     for (const card of cardDataList) {
-      if (!card.syllabus) {  // 如果卡片沒有自己的課綱資訊
+      if (!card.syllabus) {  
         card.syllabus = taskData.syllabus;
       }
     }
@@ -343,7 +335,7 @@ async function setByNameNative(page, name, value) {
   
   // 如果是課綱欄位，使用 Puppeteer 的真實打字模擬
   if (name === "syllabus") {
-    console.log(`🔍 [課綱真實打字] 開始處理: ${preview(value)}`);
+    console.log(`🔍開始處理: ${preview(value)}`);
     
     try {
       // 先找到所有課綱輸入框，選擇最後一個可見的（通常是用戶正在編輯的）
@@ -365,11 +357,11 @@ async function setByNameNative(page, name, value) {
       });
       
       if (!targetInput.found) {
-        console.log(`❌ [課綱真實打字] 找不到可見的課綱輸入框`);
+        console.log(`❌找不到可見的課綱輸入框`);
         return "NF";
       }
       
-      console.log(`🎯 [課綱真實打字] 選擇輸入框 ${targetInput.index + 1}/${targetInput.total}, ID: ${targetInput.id}`);
+      console.log(`🎯選擇輸入框 ${targetInput.index + 1}/${targetInput.total}, ID: ${targetInput.id}`);
       
       // 使用特定的 ID 選擇器，手動轉義特殊字符
       const escapedId = targetInput.id.replace(/:/g, '\\:');
@@ -387,41 +379,35 @@ async function setByNameNative(page, name, value) {
       await page.keyboard.press('KeyA');
       await page.keyboard.up('Control');
       await page.keyboard.press('Delete');
-      
-      // 等待清空完成
+   
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // 使用 Puppeteer 的 type 方法真實打字
-      await page.type(specificSelector, value, { delay: 5 }); // 每個字符間隔5ms
+      await page.type(specificSelector, value, { delay: 5 }); 
       
-      // 等待輸入完成，讓自動完成等功能穩定
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // 點擊輸入框外的區域來失焦，而不是按 Escape
       await page.evaluate((sel) => {
         const input = document.querySelector(sel);
         if (input) {
-          input.blur(); // 溫和地失去焦點
+          input.blur(); 
         }
       }, specificSelector);
       
-      // 再等待一下
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // 驗證輸入結果
       const finalValue = await page.evaluate((sel) => {
         const input = document.querySelector(sel);
         return input ? input.value : "NO_INPUT";
       }, specificSelector);
       
-      console.log(`🔍 [課綱真實打字] 最終結果: ${preview(finalValue)}`);
+      console.log(`🔍 最終結果: ${preview(finalValue)}`);
       
       if (finalValue === value) {
         return "OK";
       } else if (finalValue.includes(value)) {
-        console.log(`⚠️ [課綱真實打字] 包含期望值但有額外內容，嘗試重新設置`);
+        console.log(`⚠️包含期望值但有額外內容，嘗試重新設置`);
         
-        // 嘗試直接設置正確的值
         await page.evaluate((sel, val) => {
           const input = document.querySelector(sel);
           if (input) {
@@ -435,13 +421,12 @@ async function setByNameNative(page, name, value) {
         
         return "OK";
       } else {
-        console.log(`⚠️ [課綱真實打字] 值不匹配，期望: ${preview(value)}, 實際: ${preview(finalValue)}`);
+        console.log(`⚠️值不匹配，期望: ${preview(value)}, 實際: ${preview(finalValue)}`);
         return "VALUE_MISMATCH";
       }
       
     } catch (error) {
-      console.log(`❌ [課綱真實打字] 失敗: ${error.message}`);
-      // 如果真實打字失敗，嘗試標準方法
+      console.log(`❌失敗: ${error.message}`);
     }
   }
   
@@ -545,14 +530,12 @@ async function setByDropdown(page, labelText, value) {
         return "ELEMENT_NOT_FOUND:" + fieldMappings[label];
       }
       
-      // 確認這確實是一個下拉選單
       if (dropdown.getAttribute('role') !== 'combobox') {
         return "NOT_COMBOBOX";
       }
       
       console.log('點擊下拉選單:', fieldMappings[label]);
       
-      // 使用更真實的點擊方式
       dropdown.focus();
       dropdown.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       dropdown.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -575,11 +558,9 @@ async function setByDropdown(page, labelText, value) {
         { timeout: 3000 }
       );
     } catch (e) {
-      // 如果等待失敗，仍然嘗試查找選項列表
       console.log('等待超時，但仍嘗試查找選項列表...');
     }
 
-    // 給UI一點時間完全加載選項
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // 處理選項選擇
@@ -593,14 +574,12 @@ async function setByDropdown(page, labelText, value) {
       
       const listbox = listboxes[listboxes.length - 1];
 
-      // 基於實際測試，直接查找 MuiMenuItem-root
       const options = Array.from(listbox.querySelectorAll('li.MuiMenuItem-root'));
       
       if (options.length === 0) {
         return "NOOPTIONS";
       }
       
-      // 完全匹配
       const targetOption = options.find(opt => {
         const text = (opt.textContent || "").trim();
         return text === val;
@@ -611,7 +590,7 @@ async function setByDropdown(page, labelText, value) {
         await new Promise(resolve => setTimeout(resolve, 500));
         return "OK";
       } else {
-        // 部分匹配
+        
         const partialMatch = options.find(opt => {
           const text = (opt.textContent || "").toLowerCase().trim();
           const searchVal = val.toLowerCase().trim();
@@ -673,7 +652,6 @@ async function setByDropdownForCard(page, labelText, value) {
       
       let dropdown = null;
       
-      // 嘗試多個可能的ID
       if (fieldMappings[label]) {
         for (const id of fieldMappings[label]) {
           dropdown = document.getElementById(id);
@@ -715,7 +693,6 @@ async function setByDropdownForCard(page, labelText, value) {
         return "NODROPDOWN";
       }
       
-      // 確認這確實是一個下拉選單
       if (dropdown.getAttribute('role') !== 'combobox') {
         return "NOT_COMBOBOX";
       }
@@ -748,7 +725,6 @@ async function setByDropdownForCard(page, labelText, value) {
       console.log('等待卡片選項列表超時，但仍嘗試查找...');
     }
 
-    // 給UI一點時間完全加載選項
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // 處理選項選擇
@@ -766,7 +742,7 @@ async function setByDropdownForCard(page, labelText, value) {
         return "NOOPTIONS";
       }
       
-      // 完全匹配
+     
       const targetOption = options.find(opt => {
         const text = (opt.textContent || "").trim();
         return text === val;
@@ -777,7 +753,7 @@ async function setByDropdownForCard(page, labelText, value) {
         await new Promise(resolve => setTimeout(resolve, 500));
         return "OK";
       } else {
-        // 部分匹配
+        
         const partialMatch = options.find(opt => {
           const text = (opt.textContent || "").toLowerCase().trim();
           const searchVal = val.toLowerCase().trim();
@@ -852,10 +828,10 @@ async function fillTask(page, taskData) {
     
     // 如果下拉選單失敗或不是下拉選單，嘗試原有方法
     if (!done) {
-      // 先試 name
+      
       const r1 = await setByNameNative(page, name, val);
       if (r1 === "OK") { done = true; }
-      // 富文本備援
+     
       if (!done && isRich) {
         for (const lb of labels) {
           const r2 = await typeIntoRichByLabel(page, lb, val);
@@ -878,7 +854,7 @@ async function fillTask(page, taskData) {
 async function fillOneCard(page, card, index) {
   console.log(`🎴 開始填寫卡片 ${index + 1}...`);
   
-  // 調試：顯示解析出的卡片數據
+  // 顯示解析出的卡片數據
   console.log(`🔍 卡片數據預覽:`);
   console.log(`   - 卡片名稱: "${card.cardTitle || ''}"`);
   console.log(`   - 學科: "${card.cardSubjectId || ''}"`);
@@ -959,7 +935,6 @@ async function typeIntoFirstTextInputInDialog(page, value) {
     const dialog = dialogs[dialogs.length - 1];
     if (!dialog) return 'NODIALOG';
 
-    // 盡量找第一個可見的文字輸入框（含 MUI、一般 input、role=textbox）
     const candidates = Array.from(dialog.querySelectorAll(
       'input[type="text"], input:not([type]), [role="textbox"]'
     )).filter(el => {
@@ -981,7 +956,6 @@ async function typeIntoFirstTextInputInDialog(page, value) {
       return 'OK';
     }
 
-    // 富文本/role=textbox 的備援
     input.focus();
     const sel = window.getSelection();
     const range = document.createRange();
@@ -998,7 +972,7 @@ async function typeIntoFirstTextInputInDialog(page, value) {
 
 // 打開《搜尋現有圖片》後，把卡片名稱貼到搜尋框
 async function fillSearchExistingImageDialog(page, query) {
-  await getTopDialog(page); // 等搜尋視窗出現
+  await getTopDialog(page); 
   const r = await typeIntoFirstTextInputInDialog(page, query || '');
   console.log('🔎 搜尋關鍵字:', r, '→', (query || '').slice(0, 24));
 }
@@ -1069,7 +1043,7 @@ async function typeIntoTextareaByLabelInDialog(page, labelText, value) {
 }
 
 async function fillUploadImageDialog(page, title, description, imageData = null) {
-  await getTopDialog(page); // 等視窗出現
+  await getTopDialog(page); 
   
   // 先嘗試找到對話框中的所有標籤，用於調試
   const availableLabels = await page.evaluate(() => {
@@ -1081,7 +1055,7 @@ async function fillUploadImageDialog(page, title, description, imageData = null)
       .map(el => (el.textContent || '').trim())
       .filter(text => text.length > 0 && text.length < 50);
     
-    return [...new Set(labels)]; // 去重複
+    return [...new Set(labels)]; 
   });
   
   console.log('🔍 對話框中的可用標籤:', availableLabels);
