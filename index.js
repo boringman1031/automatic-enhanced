@@ -602,6 +602,18 @@ async function setByDropdown(page, labelText, value) {
           await new Promise(resolve => setTimeout(resolve, 500));
           return "PARTIAL";
         }
+        
+        // 如果找不到匹配選項，嘗試選擇"其他"選項作為備選
+        const otherOption = options.find(opt => {
+          const text = (opt.textContent || "").trim();
+          return text === "其他" || text === "其它" || text.toLowerCase() === "other";
+        });
+        
+        if (otherOption) {
+          otherOption.click();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return "OTHER";
+        }
       }
       
       // 返回可用選項供調試
@@ -765,6 +777,18 @@ async function setByDropdownForCard(page, labelText, value) {
           await new Promise(resolve => setTimeout(resolve, 500));
           return "PARTIAL";
         }
+        
+        // 如果找不到匹配選項，嘗試選擇"其他"選項作為備選
+        const otherOption = options.find(opt => {
+          const text = (opt.textContent || "").trim();
+          return text === "其他" || text === "其它" || text.toLowerCase() === "other";
+        });
+        
+        if (otherOption) {
+          otherOption.click();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          return "OTHER";
+        }
       }
       
       // 返回可用選項供調試
@@ -818,6 +842,10 @@ async function fillTask(page, taskData) {
           done = true; 
           console.log(`✅ ${name} (dropdown): ${preview(val)} ${r === "PARTIAL" ? "(部分匹配)" : ""}`);
           break; 
+        } else if (r === "OTHER") {
+          done = true;
+          console.log(`⚠️ ${name} (dropdown): 找不到"${preview(val)}"，已選擇"其他"選項`);
+          break;
         } else if (r.startsWith("NOPTION:")) {
           console.log(`⚠️ ${name} 找不到選項 "${val}"，可用選項: ${r.substring(8)}`);
         } else {
@@ -888,6 +916,10 @@ async function fillOneCard(page, card, index) {
           done = true; 
           console.log(`✅ ${name} (dropdown): ${preview(val)} ${r === "PARTIAL" ? "(部分匹配)" : ""}`);
           break; 
+        } else if (r === "OTHER") {
+          done = true;
+          console.log(`⚠️ ${name} (dropdown): 找不到"${preview(val)}"，已選擇"其他"選項`);
+          break;
         } else if (r.startsWith("NOPTION:")) {
           console.log(`⚠️ ${name} 找不到選項 "${val}"，可用選項: ${r.substring(8)}`);
         } else {
