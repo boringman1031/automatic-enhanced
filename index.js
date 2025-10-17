@@ -102,16 +102,21 @@ async function extractCardImages(wordPath) {
     console.log("📸 開始解析 docx 檔案中的圖片...");
     
     const images = [];
-    await mammoth.convertToHtml({
+    const imagePositions = []; // 記錄圖片在文檔中的位置信息
+    
+    const result = await mammoth.convertToHtml({
       path: wordPath
     }, {
       convertImage: mammoth.images.imgElement(function(image) {
         return image.read('base64').then(function(imageBuffer) {
-          images.push({
+          const imageData = {
             contentType: image.contentType,
             base64Data: imageBuffer,
-            altText: image.altText || ''
-          });
+            altText: image.altText || '',
+            position: images.length // 記錄在docx中的順序位置
+          };
+          
+          images.push(imageData);
           
           return {
             src: `data:${image.contentType};base64,${imageBuffer.substring(0, 50)}...`
@@ -121,12 +126,139 @@ async function extractCardImages(wordPath) {
     });
     
     console.log(`✅ 成功解析 ${images.length} 張圖片`);
+    
+    // 分析HTML結構來推測圖片與卡片的對應關係
+    if (images.length > 0 && result.value) {
+      const htmlContent = result.value;
+      console.log("📋 分析圖片在文檔中的分布...");
+      
+      // 嘗試根據HTML結構推測圖片分組
+      const imageInfo = analyzeImageDistribution(htmlContent, images.length);
+      if (imageInfo.length > 0) {
+        console.log("📍 圖片分布分析結果:", imageInfo);
+      }
+    }
+    
     return images;
     
   } catch (error) {
     console.error("❌ 解析圖片時發生錯誤:", error.message);
     return [];
   }
+}
+
+// 分析圖片在文檔中的分布情況
+function analyzeImageDistribution(htmlContent, totalImages) {
+  const distribution = [];
+  
+  // 嘗試通過HTML標籤和內容結構來推測圖片分組
+  // 這是一個簡化的實現，可以根據具體需求調整
+  const sections = htmlContent.split(/<p[^>]*>/i);
+  let imageIndex = 0;
+  
+  sections.forEach((section, sectionIndex) => {
+    const imageCount = (section.match(/<img/gi) || []).length;
+    if (imageCount > 0) {
+      distribution.push({
+        section: sectionIndex,
+        imageCount: imageCount,
+        startImageIndex: imageIndex,
+        endImageIndex: imageIndex + imageCount - 1
+      });
+      imageIndex += imageCount;
+    }
+  });
+  
+  return distribution;
+}
+
+// 智能圖片與卡片分配函數
+function assignImagesToCards(cardDataList, cardImages) {
+  console.log(`🎯 開始智能分配 ${cardImages.length} 張圖片給 ${cardDataList.length} 張卡片`);
+  
+  // 創建分配結果數組，初始化所有卡片都沒有圖片
+  const assignments = cardDataList.map((card, index) => ({
+    cardIndex: index,
+    hasImage: false,
+    imageIndex: null,
+    cardTitle: card.cardTitle || `卡片${index + 1}`,
+    group: Math.floor(index / 4) + 1, // 1, 2, 3 (每組4張卡片)
+    positionInGroup: (index % 4) + 1   // 1, 2, 3, 4
+  }));
+  
+  console.log("📊 卡片分組情況:");
+  assignments.forEach(assignment => {
+    const tag = `${assignment.group}-${assignment.positionInGroup}`;
+    console.log(`   ${tag}: ${assignment.cardTitle}`);
+  });
+  
+  // 根據圖片數量和分組情況進行智能分配
+  if (cardImages.length === 8) {
+    // 情況1: 8張圖片，推測是第1組和第3組各有4張圖片
+    console.log("🔍 檢測到8張圖片，推測分配模式: 第1組(4張) + 第3組(4張)");
+    
+    // 分配給第1組 (卡片 0-3)
+    for (let i = 0; i < 4; i++) {
+      assignments[i].hasImage = true;
+      assignments[i].imageIndex = i;
+    }
+    
+    // 分配給第3組 (卡片 8-11)
+    for (let i = 8; i < 12; i++) {
+      assignments[i].hasImage = true;
+      assignments[i].imageIndex = i - 4; // 圖片索引 4-7
+    }
+  }
+  else if (cardImages.length === 4) {
+    // 情況2: 4張圖片，可能是某一組的圖片
+    console.log("🔍 檢測到4張圖片，預設分配給第1組");
+    
+    for (let i = 0; i < 4; i++) {
+      assignments[i].hasImage = true;
+      assignments[i].imageIndex = i;
+    }
+  }
+  else if (cardImages.length > 0) {
+    // 情況3: 其他數量的圖片，按順序分配但跳過中間的空組
+    console.log(`🔍 檢測到${cardImages.length}張圖片，使用智能順序分配`);
+    
+    let imageIndex = 0;
+    let currentGroup = 1;
+    
+    while (imageIndex < cardImages.length && currentGroup <= 3) {
+      // 檢查當前組是否應該有圖片（基於已知模式）
+      const shouldHaveImages = (currentGroup === 1 || currentGroup === 3) || 
+                               (cardImages.length >= 8) || 
+                               (currentGroup === 1 && cardImages.length <= 4);
+      
+      if (shouldHaveImages) {
+        // 為當前組分配圖片
+        const startCardIndex = (currentGroup - 1) * 4;
+        const endCardIndex = Math.min(startCardIndex + 4, cardDataList.length);
+        
+        for (let cardIdx = startCardIndex; cardIdx < endCardIndex && imageIndex < cardImages.length; cardIdx++) {
+          assignments[cardIdx].hasImage = true;
+          assignments[cardIdx].imageIndex = imageIndex;
+          imageIndex++;
+        }
+      }
+      
+      currentGroup++;
+    }
+  }
+  
+  // 顯示最終分配結果
+  console.log("✅ 圖片分配結果:");
+  assignments.forEach(assignment => {
+    const tag = `${assignment.group}-${assignment.positionInGroup}`;
+    if (assignment.hasImage) {
+      console.log(`   ${tag}: 圖片 #${assignment.imageIndex + 1} → ${assignment.cardTitle}`);
+    } else {
+      console.log(`   ${tag}: 無圖片 → ${assignment.cardTitle}`);
+    }
+  });
+  
+  return assignments;
 }
 
 // ---------- 圖片檔案處理 ----------
@@ -313,12 +445,22 @@ async function parseWord(wordPath) {
     if (cardImages.length > 0) {
       console.log(`📸 從 docx 檔案中提取到 ${cardImages.length} 張圖片`);
       
-      // 將圖片與卡片關聯（按順序對應）
-      for (let i = 0; i < Math.min(cardDataList.length, cardImages.length); i++) {
-        cardDataList[i].imageData = cardImages[i];
-        const tag = `${Math.floor(i/4) + 1}-${(i % 4) + 1}`;
-        console.log(`🖼️  卡片 ${tag} (${cardDataList[i].cardTitle || '未命名'}) 已關聯圖片`);
-      }
+      // 智能圖片與卡片關聯
+      const imageAssignments = assignImagesToCards(cardDataList, cardImages);
+      
+      // 根據分配結果關聯圖片
+      imageAssignments.forEach((assignment, cardIndex) => {
+        if (assignment.hasImage) {
+          cardDataList[cardIndex].imageData = cardImages[assignment.imageIndex];
+          const tag = `${Math.floor(cardIndex/4) + 1}-${(cardIndex % 4) + 1}`;
+          console.log(`🖼️  卡片 ${tag} (${cardDataList[cardIndex].cardTitle || '未命名'}) 已關聯圖片 #${assignment.imageIndex + 1}`);
+        } else {
+          // 確保沒有圖片的卡片不會有 imageData 屬性
+          delete cardDataList[cardIndex].imageData;
+          const tag = `${Math.floor(cardIndex/4) + 1}-${(cardIndex % 4) + 1}`;
+          console.log(`📝 卡片 ${tag} (${cardDataList[cardIndex].cardTitle || '未命名'}) 無對應圖片`);
+        }
+      });
     } else {
       console.log("📷 docx 檔案中未找到圖片，將使用手動上傳模式");
     }
@@ -1202,17 +1344,29 @@ async function runOnce(page, wordPath) {
     if (hasImageData) {
       console.log(`🖼️  卡片 ${tag} 包含來自 docx 的圖片，將嘗試自動上傳`);
       await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續（將自動上傳圖片）...');
+      
+      await fillUploadImageDialog(
+        await getActivePage(page), 
+        cards[i].cardTitle, 
+        cards[i].cardDescription,
+        cards[i].imageData
+      );
     } else {
-      console.log(`📝 卡片 ${tag} 無圖片資料，需手動上傳`);
-      await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
+      console.log(`📝 卡片 ${tag} 無對應圖片，跳過圖片上傳步驟`);
+      console.log(`💡 提示：如需為此卡片添加圖片，請手動操作或確認 docx 中的圖片位置`);
+      
+      // 可選：仍然提供手動上傳的機會
+      const userChoice = await ask('👉 是否要手動上傳圖片？(y/N): ');
+      if (userChoice.toLowerCase() === 'y') {
+        await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
+        await fillUploadImageDialog(
+          await getActivePage(page), 
+          cards[i].cardTitle, 
+          cards[i].cardDescription,
+          null
+        );
+      }
     }
-    
-    await fillUploadImageDialog(
-      await getActivePage(page), 
-      cards[i].cardTitle, 
-      cards[i].cardDescription,
-      cards[i].imageData || null
-    );
   }
 
   console.log("✅ 全部卡片處理完畢！");
