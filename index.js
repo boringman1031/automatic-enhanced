@@ -1352,20 +1352,15 @@ async function runOnce(page, wordPath) {
         cards[i].imageData
       );
     } else {
-      console.log(`📝 卡片 ${tag} 無對應圖片，跳過圖片上傳步驟`);
-      console.log(`💡 提示：如需為此卡片添加圖片，請手動操作或確認 docx 中的圖片位置`);
+      console.log(`📝 卡片 ${tag} 無對應圖片，將填入卡片描述到圖片上傳對話框`);
       
-      // 可選：仍然提供手動上傳的機會
-      const userChoice = await ask('👉 是否要手動上傳圖片？(y/N): ');
-      if (userChoice.toLowerCase() === 'y') {
-        await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
-        await fillUploadImageDialog(
-          await getActivePage(page), 
-          cards[i].cardTitle, 
-          cards[i].cardDescription,
-          null
-        );
-      }
+      await ask('👉 請在卡片頁按【上傳圖片】打開視窗，準備好後按 Enter 繼續...');
+      await fillUploadImageDialog(
+        await getActivePage(page), 
+        cards[i].cardTitle, 
+        cards[i].cardDescription,
+        null
+      );
     }
   }
 
